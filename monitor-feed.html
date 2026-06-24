@@ -152,31 +152,32 @@
       border-color: currentColor;
     }
 
-    /* ── Feed Grid ── */
+    /* ── Feed Masonry (Pinterest) ── */
     #feed {
       max-width: 960px;
       margin: 20px auto 40px;
       padding: 0 20px;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
+      columns: 3 240px;
+      column-gap: 14px;
     }
 
     /* ── Card ── */
     .card {
+      break-inside: avoid;
+      margin-bottom: 14px;
+      display: block;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      display: flex;
-      flex-direction: column;
       overflow: hidden;
       transition: transform .15s, box-shadow .15s;
+      cursor: default;
     }
 
     .card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      box-shadow: 0 6px 18px rgba(0,0,0,.13);
     }
 
     .card-header {
@@ -251,37 +252,75 @@
 
     .open-link:hover { background: #eef6ff; }
 
-    /* ── Embeds ── */
-    .card--video { grid-column: span 1; }
-
-    .embed-wrap {
-      width: 100%;
-      background: #000;
-      border-radius: var(--radius) var(--radius) 0 0;
-      overflow: hidden;
-    }
-
-    .embed-youtube {
+    /* ── Video thumbnail (click-to-play) ── */
+    .video-thumb {
       position: relative;
-      padding-bottom: 56.25%; /* 16:9 */
-      height: 0;
+      cursor: pointer;
+      overflow: hidden;
+      width: 100%;
     }
 
-    .embed-youtube iframe {
+    .video-thumb .card-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .3s, filter .3s;
+    }
+
+    .video-thumb:hover .card-img {
+      transform: scale(1.04);
+      filter: brightness(.8);
+    }
+
+    .play-btn {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      border: none;
-    }
-
-    .embed-instagram, .embed-tiktok {
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 54px; height: 54px;
+      background: rgba(0,0,0,.6);
+      border-radius: 50%;
       display: flex;
+      align-items: center;
       justify-content: center;
-      background: #fafafa;
+      color: #fff;
+      font-size: 22px;
+      pointer-events: none;
+      backdrop-filter: blur(3px);
+      transition: transform .15s, background .15s;
+      padding-left: 4px; /* optical center for ▶ */
     }
 
-    .embed-instagram iframe { width: 100%; height: 560px; border: none; }
-    .embed-tiktok  iframe { width: 100%; height: 700px; border: none; }
+    .video-thumb:hover .play-btn {
+      background: rgba(0,0,0,.85);
+      transform: translate(-50%, -50%) scale(1.12);
+    }
+
+    .video-platform-badge {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      backdrop-filter: blur(3px);
+      letter-spacing: .3px;
+      pointer-events: none;
+    }
+
+    /* aspect ratio variants */
+    .ratio-landscape { aspect-ratio: 16/9; }
+    .ratio-portrait  { aspect-ratio: 9/16; }
+    .ratio-square    { aspect-ratio: 1/1; }
+
+    /* inline YouTube iframe after click */
+    .yt-active { aspect-ratio: 16/9; }
+    .yt-active iframe {
+      width: 100%; height: 100%;
+      border: none; display: block;
+    }
 
     /* ── States ── */
     #status {
@@ -346,7 +385,6 @@
       width: 100%;
       aspect-ratio: 16/9;
       overflow: hidden;
-      border-radius: var(--radius) var(--radius) 0 0;
       background: var(--border);
     }
 
@@ -361,9 +399,12 @@
     .card:hover .card-img { transform: scale(1.03); }
 
     /* ── Responsive ── */
-    @media (max-width: 500px) {
-      #feed { grid-template-columns: 1fr; }
+    @media (max-width: 600px) {
+      #feed { columns: 2 180px; }
       .header-inner { flex-direction: column; align-items: stretch; }
+    }
+    @media (max-width: 360px) {
+      #feed { columns: 1; }
     }
   </style>
 </head>
@@ -659,20 +700,19 @@
     enrichArticleCards(items);
   }
 
-  // ── Enrich article cards with OG image/title via microlink ───────────────
+  // ── Enrich cards with OG metadata via microlink ──────────────────────────
   async function enrichArticleCards(items) {
     for (const r of items) {
-      if (getEmbed(r.link)) continue; // skip video cards
-      const titleEl = document.querySelector(`[data-card-url="${CSS.escape(r.link)}"] .card-title`);
-      const imgWrap = document.querySelector(`[data-card-url="${CSS.escape(r.link)}"] .card-img-wrap`);
-      if (!imgWrap) continue;
+      const embed = getEmbed(r.link);
 
-      // Check cache first
+      // YouTube already has thumbnail — skip
+      if (embed?.type === 'youtube') continue;
+
+      const card = document.querySelector(`[data-card-url="${CSS.escape(r.link)}"]`);
+      if (!card) continue;
+
       const cached = getMeta(r.link);
-      if (cached) {
-        applyMeta(r.link, cached);
-        continue;
-      }
+      if (cached) { applyMeta(r.link, cached); continue; }
 
       try {
         const res = await fetch('https://api.microlink.io/?url=' + encodeURIComponent(r.link));
@@ -693,24 +733,28 @@
   function applyMeta(url, meta) {
     const card = document.querySelector(`[data-card-url="${CSS.escape(url)}"]`);
     if (!card) return;
+
     if (meta.img) {
-      const wrap = card.querySelector('.card-img-wrap');
+      // Works for both .card-img-wrap (articles) and .video-thumb (Instagram/TikTok)
+      const wrap = card.querySelector('.card-img-wrap, .video-thumb');
       if (wrap && !wrap.querySelector('img')) {
         const img = document.createElement('img');
         img.className = 'card-img';
         img.src = meta.img;
         img.alt = '';
         img.loading = 'lazy';
-        wrap.appendChild(img);
+        // Insert before play button if it exists
+        const playBtn = wrap.querySelector('.play-btn');
+        wrap.insertBefore(img, playBtn || null);
       }
     }
     if (meta.title) {
-      const titleEl = card.querySelector('.card-title');
-      if (titleEl && !titleEl.textContent.trim()) titleEl.textContent = meta.title;
+      const el = card.querySelector('.card-title');
+      if (el && !el.textContent.trim()) el.textContent = meta.title;
     }
     if (meta.desc) {
-      const descEl = card.querySelector('.card-desc');
-      if (descEl && !descEl.textContent.trim()) descEl.textContent = meta.desc;
+      const el = card.querySelector('.card-desc');
+      if (el && !el.textContent.trim()) el.textContent = meta.desc;
     }
   }
 
@@ -767,27 +811,50 @@
     return null;
   }
 
-  function embedHTML(embed) {
-    if (!embed) return '';
-    if (embed.type === 'youtube') {
-      return `<div class="embed-wrap"><div class="embed-youtube">
-        <iframe src="https://www.youtube.com/embed/${embed.id}?rel=0" allowfullscreen
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
-      </div></div>`;
+  // ── Video thumbnail (click-to-play) ─────────────────────────────────────
+  function makeVideoThumb(embed, url) {
+    const isYT = embed.type === 'youtube';
+    const ratio = isYT ? 'ratio-landscape' : 'ratio-portrait';
+    const platform = { youtube: 'YouTube', instagram: 'Instagram', tiktok: 'TikTok' }[embed.type] || '';
+
+    const wrap = document.createElement('div');
+    wrap.className = `video-thumb ${ratio}`;
+    wrap.dataset.embedType = embed.type;
+
+    // YouTube: free thumbnail, no API needed
+    if (isYT) {
+      const img = document.createElement('img');
+      img.className = 'card-img';
+      img.src = `https://img.youtube.com/vi/${embed.id}/hqdefault.jpg`;
+      img.alt = '';
+      img.loading = 'lazy';
+      wrap.appendChild(img);
     }
-    if (embed.type === 'instagram') {
-      return `<div class="embed-wrap"><div class="embed-instagram">
-        <iframe src="https://www.instagram.com/${embed.path}/embed/" scrolling="no"
-          allowtransparency="true" allowfullscreen></iframe>
-      </div></div>`;
-    }
-    if (embed.type === 'tiktok') {
-      return `<div class="embed-wrap"><div class="embed-tiktok">
-        <iframe src="https://www.tiktok.com/embed/v2/${embed.id}"
-          allowfullscreen allow="encrypted-media"></iframe>
-      </div></div>`;
-    }
-    return '';
+    // Instagram/TikTok: placeholder filled async via microlink in enrichArticleCards
+
+    const playBtn = document.createElement('div');
+    playBtn.className = 'play-btn';
+    playBtn.textContent = '▶';
+    wrap.appendChild(playBtn);
+
+    const badge = document.createElement('div');
+    badge.className = 'video-platform-badge';
+    badge.textContent = platform;
+    wrap.appendChild(badge);
+
+    wrap.addEventListener('click', () => {
+      if (isYT) {
+        // Load inline iframe
+        wrap.classList.remove('video-thumb', ratio);
+        wrap.classList.add('yt-active');
+        wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${embed.id}?autoplay=1&rel=0"
+          allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
+      } else {
+        window.open(url, '_blank');
+      }
+    });
+
+    return wrap;
   }
 
   function makeCard(r) {
@@ -798,31 +865,44 @@
     const embed = getEmbed(r.link);
 
     const card = document.createElement('article');
-    card.className = 'card' + (embed ? ' card--video' : '');
+    card.className = 'card';
     card.dataset.cardUrl = r.link;
 
     const domain = (() => {
       try { return new URL(r.link).hostname.replace('www.', ''); } catch { return r.link; }
     })();
 
-    // For article cards: show image placeholder (filled async by enrichArticleCards)
-    const articleImg = !embed ? `<div class="card-img-wrap"></div>` : '';
+    // Top media area
+    if (embed) {
+      card.appendChild(makeVideoThumb(embed, r.link));
+    } else {
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'card-img-wrap';
+      card.appendChild(imgWrap);
+    }
 
-    card.innerHTML = `
-      ${embed ? embedHTML(embed) : articleImg}
-      <div class="card-header">
-        ${topic ? `<span class="topic-badge" style="background:${col.bg};color:${col.text}">${esc(topic)}</span>` : '<span></span>'}
-        <span class="card-date">${esc(formatDate(r.data))}</span>
-      </div>
-      <div class="card-body">
-        <div class="card-title">${esc(title)}</div>
-        <div class="card-desc">${esc(desc)}</div>
-        ${!embed ? `<div class="card-url">${esc(domain)}</div>` : ''}
-      </div>
-      <div class="card-footer">
-        <a class="open-link" href="${esc(r.link)}" target="_blank" rel="noopener">Abrir no ${esc(domain)} →</a>
-      </div>
+    // Text content
+    const meta = document.createElement('div');
+    meta.className = 'card-header';
+    meta.innerHTML = `
+      ${topic ? `<span class="topic-badge" style="background:${col.bg};color:${col.text}">${esc(topic)}</span>` : '<span></span>'}
+      <span class="card-date">${esc(formatDate(r.data))}</span>
     `;
+    card.appendChild(meta);
+
+    const body = document.createElement('div');
+    body.className = 'card-body';
+    body.innerHTML = `
+      <div class="card-title">${esc(title)}</div>
+      <div class="card-desc">${esc(desc)}</div>
+      ${!embed ? `<div class="card-url">${esc(domain)}</div>` : ''}
+    `;
+    card.appendChild(body);
+
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
+    footer.innerHTML = `<a class="open-link" href="${esc(r.link)}" target="_blank" rel="noopener">Abrir no ${esc(domain)} →</a>`;
+    card.appendChild(footer);
 
     return card;
   }
