@@ -251,6 +251,38 @@
 
     .open-link:hover { background: #eef6ff; }
 
+    /* ── Embeds ── */
+    .card--video { grid-column: span 1; }
+
+    .embed-wrap {
+      width: 100%;
+      background: #000;
+      border-radius: var(--radius) var(--radius) 0 0;
+      overflow: hidden;
+    }
+
+    .embed-youtube {
+      position: relative;
+      padding-bottom: 56.25%; /* 16:9 */
+      height: 0;
+    }
+
+    .embed-youtube iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      border: none;
+    }
+
+    .embed-instagram, .embed-tiktok {
+      display: flex;
+      justify-content: center;
+      background: #fafafa;
+    }
+
+    .embed-instagram iframe { width: 100%; height: 560px; border: none; }
+    .embed-tiktok  iframe { width: 100%; height: 700px; border: none; }
+
     /* ── States ── */
     #status {
       max-width: 960px;
@@ -273,6 +305,60 @@
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Date filter bar ── */
+    .filter-bar {
+      max-width: 960px;
+      margin: 10px auto 0;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .filter-bar-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-right: 2px;
+    }
+
+    .date-btn {
+      padding: 5px 13px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      transition: all .15s;
+    }
+
+    .date-btn:hover { border-color: #aaa; color: var(--text); }
+    .date-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+    /* ── Article image preview ── */
+    .card-img-wrap {
+      width: 100%;
+      aspect-ratio: 16/9;
+      overflow: hidden;
+      border-radius: var(--radius) var(--radius) 0 0;
+      background: var(--border);
+    }
+
+    .card-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .3s;
+    }
+
+    .card:hover .card-img { transform: scale(1.03); }
 
     /* ── Responsive ── */
     @media (max-width: 500px) {
@@ -324,6 +410,7 @@
 </div>
 
 <div id="chips"></div>
+<div id="date-filters" class="filter-bar"></div>
 <div id="status"></div>
 <div id="feed"></div>
 
@@ -350,6 +437,27 @@
   let allItems = [];
   let activeTopics = new Set();
   let searchQuery = '';
+  let dateFilter = 'all'; // 'all' | 'today' | '7d' | '30d'
+
+  // ── Metadata cache (localStorage) ────────────────────────────────────────
+  const META_KEY = 'monitor_meta_v1';
+  function getMeta(url) {
+    try {
+      const c = JSON.parse(localStorage.getItem(META_KEY) || '{}');
+      const e = c[url];
+      if (e && Date.now() - e._ts < 86400000) return e; // 24h TTL
+    } catch {}
+    return null;
+  }
+  function saveMeta(url, data) {
+    try {
+      const c = JSON.parse(localStorage.getItem(META_KEY) || '{}');
+      c[url] = { ...data, _ts: Date.now() };
+      const keys = Object.keys(c);
+      if (keys.length > 300) delete c[keys[0]];
+      localStorage.setItem(META_KEY, JSON.stringify(c));
+    } catch {}
+  }
 
   // ── Persist URL ───────────────────────────────────────────────────────────
   const STORAGE_KEY = 'monitor_sheet_url';
@@ -423,12 +531,52 @@
       allItems = parseCSV(text);
       activeTopics.clear();
       renderChips();
+      renderDateFilters();
       renderFeed();
       setStatus('');
       saveUrl(url);
     } catch (e) {
       setStatus(`❌ Erro ao carregar: ${e.message}<br><small>Verifique se o link CSV está correto e a planilha está publicada.</small>`);
     }
+  }
+
+  // ── Date filters ─────────────────────────────────────────────────────────
+  function renderDateFilters() {
+    const el = document.getElementById('date-filters');
+    el.innerHTML = '';
+    const options = [
+      { id: 'all',   label: 'Tudo' },
+      { id: 'today', label: 'Hoje' },
+      { id: '7d',    label: '7 dias' },
+      { id: '30d',   label: '30 dias' },
+    ];
+    const lbl = document.createElement('span');
+    lbl.className = 'filter-bar-label';
+    lbl.textContent = 'Período:';
+    el.appendChild(lbl);
+    options.forEach(o => {
+      const btn = document.createElement('button');
+      btn.className = 'date-btn' + (dateFilter === o.id ? ' active' : '');
+      btn.textContent = o.label;
+      btn.dataset.id = o.id;
+      btn.addEventListener('click', () => {
+        dateFilter = o.id;
+        document.querySelectorAll('.date-btn').forEach(b => b.classList.toggle('active', b.dataset.id === o.id));
+        renderFeed();
+      });
+      el.appendChild(btn);
+    });
+  }
+
+  function filterByDate(items) {
+    if (dateFilter === 'all') return items;
+    const now = Date.now();
+    const cutoff = {
+      today: now - 86400000,
+      '7d':  now - 7  * 86400000,
+      '30d': now - 30 * 86400000,
+    }[dateFilter];
+    return items.filter(r => parseDate(r.data) >= cutoff);
   }
 
   // ── Render Chips ──────────────────────────────────────────────────────────
@@ -487,7 +635,7 @@
     feed.innerHTML = '';
 
     const q = searchQuery.toLowerCase();
-    const items = allItems
+    let items = allItems
       .filter(r => {
         const topic = r.topico || r['tópico'] || '';
         if (activeTopics.size && !activeTopics.has(topic)) return false;
@@ -496,12 +644,10 @@
           if (!haystack.includes(q)) return false;
         }
         return true;
-      })
-      .sort((a, b) => {
-        // Sort by date descending (newest first)
-        const da = parseDate(a.data), db = parseDate(b.data);
-        return db - da;
       });
+
+    items = filterByDate(items);
+    items.sort((a, b) => parseDate(b.data) - parseDate(a.data));
 
     if (!items.length) {
       setStatus('Nenhum resultado encontrado.');
@@ -510,6 +656,62 @@
 
     setStatus('');
     items.forEach(r => feed.appendChild(makeCard(r)));
+    enrichArticleCards(items);
+  }
+
+  // ── Enrich article cards with OG image/title via microlink ───────────────
+  async function enrichArticleCards(items) {
+    for (const r of items) {
+      if (getEmbed(r.link)) continue; // skip video cards
+      const titleEl = document.querySelector(`[data-card-url="${CSS.escape(r.link)}"] .card-title`);
+      const imgWrap = document.querySelector(`[data-card-url="${CSS.escape(r.link)}"] .card-img-wrap`);
+      if (!imgWrap) continue;
+
+      // Check cache first
+      const cached = getMeta(r.link);
+      if (cached) {
+        applyMeta(r.link, cached);
+        continue;
+      }
+
+      try {
+        const res = await fetch('https://api.microlink.io/?url=' + encodeURIComponent(r.link));
+        if (!res.ok) continue;
+        const json = await res.json();
+        const data = json.data || {};
+        const meta = {
+          img: data.image?.url || data.screenshot?.url || null,
+          title: data.title || null,
+          desc: data.description || null,
+        };
+        saveMeta(r.link, meta);
+        applyMeta(r.link, meta);
+      } catch {}
+    }
+  }
+
+  function applyMeta(url, meta) {
+    const card = document.querySelector(`[data-card-url="${CSS.escape(url)}"]`);
+    if (!card) return;
+    if (meta.img) {
+      const wrap = card.querySelector('.card-img-wrap');
+      if (wrap && !wrap.querySelector('img')) {
+        const img = document.createElement('img');
+        img.className = 'card-img';
+        img.src = meta.img;
+        img.alt = '';
+        img.loading = 'lazy';
+        wrap.appendChild(img);
+      }
+    }
+    if (meta.title) {
+      const titleEl = card.querySelector('.card-title');
+      if (titleEl && !titleEl.textContent.trim()) titleEl.textContent = meta.title;
+    }
+    if (meta.desc) {
+      const descEl = card.querySelector('.card-desc');
+      if (descEl && !descEl.textContent.trim()) descEl.textContent = meta.desc;
+    }
   }
 
   function parseDate(s) {
@@ -528,31 +730,97 @@
     return new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
+  // ── Embed detection ──────────────────────────────────────────────────────
+  function getEmbed(url) {
+    try {
+      const u = new URL(url);
+      const h = u.hostname.replace('www.', '');
+      const p = u.pathname;
+
+      // YouTube
+      if (h === 'youtube.com' || h === 'm.youtube.com') {
+        const v = u.searchParams.get('v');
+        if (v) return { type: 'youtube', id: v };
+        const shorts = p.match(/\/shorts\/([^/?]+)/);
+        if (shorts) return { type: 'youtube', id: shorts[1] };
+      }
+      if (h === 'youtu.be') {
+        const id = p.replace('/', '').split('?')[0];
+        if (id) return { type: 'youtube', id };
+      }
+
+      // Instagram
+      if (h === 'instagram.com') {
+        const reel = p.match(/\/reel\/([^/?]+)/);
+        if (reel) return { type: 'instagram', path: `reel/${reel[1]}` };
+        const post = p.match(/\/p\/([^/?]+)/);
+        if (post) return { type: 'instagram', path: `p/${post[1]}` };
+      }
+
+      // TikTok
+      if (h === 'tiktok.com' || h === 'vm.tiktok.com') {
+        const vid = p.match(/\/video\/(\d+)/);
+        if (vid) return { type: 'tiktok', id: vid[1] };
+      }
+
+    } catch {}
+    return null;
+  }
+
+  function embedHTML(embed) {
+    if (!embed) return '';
+    if (embed.type === 'youtube') {
+      return `<div class="embed-wrap"><div class="embed-youtube">
+        <iframe src="https://www.youtube.com/embed/${embed.id}?rel=0" allowfullscreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      </div></div>`;
+    }
+    if (embed.type === 'instagram') {
+      return `<div class="embed-wrap"><div class="embed-instagram">
+        <iframe src="https://www.instagram.com/${embed.path}/embed/" scrolling="no"
+          allowtransparency="true" allowfullscreen></iframe>
+      </div></div>`;
+    }
+    if (embed.type === 'tiktok') {
+      return `<div class="embed-wrap"><div class="embed-tiktok">
+        <iframe src="https://www.tiktok.com/embed/v2/${embed.id}"
+          allowfullscreen allow="encrypted-media"></iframe>
+      </div></div>`;
+    }
+    return '';
+  }
+
   function makeCard(r) {
     const topic = r.topico || r['tópico'] || '';
     const title = r.titulo || r['título'] || '';
     const desc  = r.descricao || r['descrição'] || '';
     const col   = topicColor(topic || '?');
+    const embed = getEmbed(r.link);
 
     const card = document.createElement('article');
-    card.className = 'card';
+    card.className = 'card' + (embed ? ' card--video' : '');
+    card.dataset.cardUrl = r.link;
 
     const domain = (() => {
       try { return new URL(r.link).hostname.replace('www.', ''); } catch { return r.link; }
     })();
 
+    // For article cards: show image placeholder (filled async by enrichArticleCards)
+    const articleImg = !embed ? `<div class="card-img-wrap"></div>` : '';
+
     card.innerHTML = `
+      ${embed ? embedHTML(embed) : articleImg}
       <div class="card-header">
         ${topic ? `<span class="topic-badge" style="background:${col.bg};color:${col.text}">${esc(topic)}</span>` : '<span></span>'}
         <span class="card-date">${esc(formatDate(r.data))}</span>
       </div>
       <div class="card-body">
-        ${title ? `<div class="card-title">${esc(title)}</div>` : ''}
-        ${desc  ? `<div class="card-desc">${esc(desc)}</div>`  : ''}
-        <div class="card-url">${esc(domain)}</div>
+        <div class="card-title">${esc(title)}</div>
+        <div class="card-desc">${esc(desc)}</div>
+        ${!embed ? `<div class="card-url">${esc(domain)}</div>` : ''}
       </div>
       <div class="card-footer">
-        <a class="open-link" href="${esc(r.link)}" target="_blank" rel="noopener">Abrir link →</a>
+        <a class="open-link" href="${esc(r.link)}" target="_blank" rel="noopener">Abrir no ${esc(domain)} →</a>
       </div>
     `;
 
@@ -566,6 +834,7 @@
   function clearFeed() {
     document.getElementById('feed').innerHTML = '';
     document.getElementById('chips').innerHTML = '';
+    document.getElementById('date-filters').innerHTML = '';
   }
 
   function setStatus(html) {
