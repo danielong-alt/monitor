@@ -814,14 +814,15 @@
   // ── Video thumbnail (click-to-play) ─────────────────────────────────────
   function makeVideoThumb(embed, url) {
     const isYT = embed.type === 'youtube';
-    const ratio = isYT ? 'ratio-landscape' : 'ratio-portrait';
     const platform = { youtube: 'YouTube', instagram: 'Instagram', tiktok: 'TikTok' }[embed.type] || '';
 
     const wrap = document.createElement('div');
-    wrap.className = `video-thumb ${ratio}`;
+    wrap.className = 'video-thumb';
+    // Force aspect ratio via style — mais confiável que classe em colunas CSS
+    wrap.style.aspectRatio = isYT ? '16/9' : '9/16';
     wrap.dataset.embedType = embed.type;
 
-    // YouTube: free thumbnail, no API needed
+    // YouTube: thumbnail gratuita direto da API do YouTube
     if (isYT) {
       const img = document.createElement('img');
       img.className = 'card-img';
@@ -830,7 +831,7 @@
       img.loading = 'lazy';
       wrap.appendChild(img);
     }
-    // Instagram/TikTok: placeholder filled async via microlink in enrichArticleCards
+    // Instagram/TikTok: thumbnail via microlink (preenchido async)
 
     const playBtn = document.createElement('div');
     playBtn.className = 'play-btn';
@@ -843,14 +844,27 @@
     wrap.appendChild(badge);
 
     wrap.addEventListener('click', () => {
+      const ratio = wrap.style.aspectRatio;
+      wrap.className = '';
+      wrap.style.cssText = `aspect-ratio:${ratio};overflow:hidden;`;
+
       if (isYT) {
-        // Load inline iframe
-        wrap.classList.remove('video-thumb', ratio);
-        wrap.classList.add('yt-active');
-        wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${embed.id}?autoplay=1&rel=0"
-          allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
-      } else {
-        window.open(url, '_blank');
+        wrap.innerHTML = `<iframe
+          src="https://www.youtube.com/embed/${embed.id}?autoplay=1&rel=0"
+          style="width:100%;height:100%;border:none;display:block"
+          allowfullscreen allow="autoplay;encrypted-media;picture-in-picture"></iframe>`;
+
+      } else if (embed.type === 'instagram') {
+        wrap.innerHTML = `<iframe
+          src="https://www.instagram.com/${embed.path}/embed/"
+          style="width:100%;height:100%;border:none;display:block"
+          scrolling="no" allowtransparency="true" allowfullscreen></iframe>`;
+
+      } else if (embed.type === 'tiktok') {
+        wrap.innerHTML = `<iframe
+          src="https://www.tiktok.com/embed/v2/${embed.id}"
+          style="width:100%;height:100%;border:none;display:block"
+          allowfullscreen allow="encrypted-media"></iframe>`;
       }
     });
 
