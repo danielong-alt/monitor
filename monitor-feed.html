@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Monitor de Tópicos</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #fafafa;
+      --surface: #fff;
+      --border: #ebebeb;
+      --text: #1a1a1a;
+      --muted: #8e8e8e;
+      --accent: #0095f6;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+    }
+
+    .header-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      flex-shrink: 0;
+    }
+
+    header h1 span { color: var(--accent); }
+
+    .search-wrap {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    #search {
+      width: 100%;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    #search:focus { border-color: var(--accent); }
+
+    /* ── Config Banner ── */
+    #config-banner {
+      max-width: 960px;
+      margin: 20px auto 0;
+      padding: 0 20px;
+    }
+
+    .config-box {
+      background: #eef6ff;
+      border: 1px solid #b3d7ff;
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .config-box p { font-size: 13px; color: #444; line-height: 1.5; }
+    .config-box strong { color: var(--text); }
+
+    .config-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #sheet-url {
+      flex: 1;
+      min-width: 240px;
+      padding: 8px 12px;
+      border: 1px solid #b3d7ff;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    #sheet-url:focus { border-color: var(--accent); }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+
+    button:hover { opacity: .85; }
+
+    #load-btn {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Topic Filter Chips ── */
+    #chips {
+      max-width: 960px;
+      margin: 16px auto 0;
+      padding: 0 20px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: all .15s;
+    }
+
+    .chip.active {
+      border-color: currentColor;
+    }
+
+    /* ── Feed Grid ── */
+    #feed {
+      max-width: 960px;
+      margin: 20px auto 40px;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    }
+
+    .card-header {
+      padding: 14px 16px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .topic-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      text-transform: uppercase;
+    }
+
+    .card-date {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .card-body {
+      padding: 0 16px 14px;
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 6px;
+      word-break: break-word;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .card-url {
+      font-size: 11px;
+      color: #bbb;
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-footer {
+      padding: 10px 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .open-link {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 6px;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+
+    .open-link:hover { background: #eef6ff; }
+
+    /* ── States ── */
+    #status {
+      max-width: 960px;
+      margin: 40px auto;
+      padding: 0 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: 8px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ── */
+    @media (max-width: 500px) {
+      #feed { grid-template-columns: 1fr; }
+      .header-inner { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── CONFIGURAÇÃO ───────────────────────────────── -->
+<!--
+  COMO USAR:
+  1. Crie uma planilha Google Sheets com as colunas:
+       link | data | topico | titulo | descricao
+     (as duas últimas são opcionais mas aparecem no card)
+
+  2. Publique a planilha:
+       Arquivo → Compartilhar → Publicar na web
+       Escolha: Planilha inteira → Valores separados por vírgula (.csv)
+       Clique em "Publicar" e copie o link gerado.
+
+  3. Cole o link no campo abaixo e clique em "Carregar".
+     O link salvo fica no navegador (localStorage) — não precisa repetir.
+-->
+
+<header>
+  <div class="header-inner">
+    <h1>Monitor<span>.</span></h1>
+    <div class="search-wrap">
+      <input id="search" type="text" placeholder="Buscar links, tópicos..." />
+    </div>
+  </div>
+</header>
+
+<div id="config-banner">
+  <div class="config-box">
+    <p>
+      <strong>Configure a planilha:</strong> cole abaixo o link CSV do Google Sheets
+      (Arquivo → Publicar na web → CSV). Colunas esperadas:
+      <code>link</code>, <code>data</code>, <code>topico</code>, <code>titulo</code> (opcional), <code>descricao</code> (opcional).
+    </p>
+    <div class="config-row">
+      <input id="sheet-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" />
+      <button id="load-btn">Carregar</button>
+      <button id="clear-btn" style="background:#f0f0f0;color:#555;">Limpar</button>
+    </div>
+  </div>
+</div>
+
+<div id="chips"></div>
+<div id="status"></div>
+<div id="feed"></div>
+
+<script>
+  // ── Paleta de cores por tópico (gerada por hash) ──────────────────────────
+  const PALETTES = [
+    { bg: '#fde8f0', text: '#c0185a' },
+    { bg: '#e8f4fd', text: '#0a6dac' },
+    { bg: '#e8fdf0', text: '#1a8a45' },
+    { bg: '#fdf4e8', text: '#a05a00' },
+    { bg: '#f0e8fd', text: '#6a1fbd' },
+    { bg: '#fdf0e8', text: '#c04010' },
+    { bg: '#e8fdfc', text: '#0a8a7a' },
+    { bg: '#fdfce8', text: '#7a7a00' },
+  ];
+
+  function topicColor(topic) {
+    let h = 0;
+    for (let i = 0; i < topic.length; i++) h = (h * 31 + topic.charCodeAt(i)) & 0xffffff;
+    return PALETTES[Math.abs(h) % PALETTES.length];
+  }
+
+  // ── Estado ────────────────────────────────────────────────────────────────
+  let allItems = [];
+  let activeTopics = new Set();
+  let searchQuery = '';
+
+  // ── Persist URL ───────────────────────────────────────────────────────────
+  const STORAGE_KEY = 'monitor_sheet_url';
+
+  function savedUrl() {
+    try { return localStorage.getItem(STORAGE_KEY) || ''; } catch { return ''; }
+  }
+
+  function saveUrl(url) {
+    try { localStorage.setItem(STORAGE_KEY, url); } catch {}
+  }
+
+  // ── CSV Parser ────────────────────────────────────────────────────────────
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+
+    const headers = splitCSVRow(lines[0]).map(h => h.trim().toLowerCase());
+
+    return lines.slice(1).map(line => {
+      const vals = splitCSVRow(line);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+      return obj;
+    }).filter(r => r.link);
+  }
+
+  function splitCSVRow(row) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < row.length; i++) {
+      const c = row[i];
+      if (c === '"') {
+        if (inQ && row[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === ',' && !inQ) {
+        result.push(cur); cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    result.push(cur);
+    return result;
+  }
+
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  async function fetchCSV(url) {
+    try {
+      const res = await fetch(url, { redirect: 'follow' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
+    } catch (e) {
+      const isLocal = window.location.protocol === 'file:';
+      if (isLocal) {
+        throw new Error(
+          'O arquivo está aberto localmente e o Chrome bloqueia esse acesso por segurança.<br><br>' +
+          '<strong>Solução em 30 segundos:</strong> acesse <a href="https://netlify.com/drop" target="_blank" style="color:var(--accent)">netlify.com/drop</a>, ' +
+          'arraste este arquivo HTML e use a URL gerada. Aí funciona direto.'
+        );
+      }
+      throw new Error(e.message);
+    }
+  }
+
+  async function loadSheet(url) {
+    setStatus('<div class="spinner"></div><br>Carregando planilha…');
+    clearFeed();
+
+    try {
+      const text = await fetchCSV(url);
+      allItems = parseCSV(text);
+      activeTopics.clear();
+      renderChips();
+      renderFeed();
+      setStatus('');
+      saveUrl(url);
+    } catch (e) {
+      setStatus(`❌ Erro ao carregar: ${e.message}<br><small>Verifique se o link CSV está correto e a planilha está publicada.</small>`);
+    }
+  }
+
+  // ── Render Chips ──────────────────────────────────────────────────────────
+  function renderChips() {
+    const topics = [...new Set(allItems.map(r => r.topico || r['tópico'] || '').filter(Boolean))].sort();
+    const el = document.getElementById('chips');
+    el.innerHTML = '';
+
+    if (!topics.length) return;
+
+    const all = makeChip('Todos', true);
+    all.addEventListener('click', () => { activeTopics.clear(); syncChips(); renderFeed(); });
+    el.appendChild(all);
+
+    topics.forEach(t => {
+      const c = makeChip(t, false);
+      const col = topicColor(t);
+      c.style.background = col.bg;
+      c.style.color = col.text;
+      c.addEventListener('click', () => {
+        if (activeTopics.has(t)) activeTopics.delete(t);
+        else activeTopics.add(t);
+        syncChips();
+        renderFeed();
+      });
+      el.appendChild(c);
+    });
+  }
+
+  function makeChip(label, active) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (active ? ' active' : '');
+    c.textContent = label;
+    c.dataset.label = label;
+    if (label === 'Todos') {
+      c.style.background = '#1a1a1a';
+      c.style.color = '#fff';
+    }
+    return c;
+  }
+
+  function syncChips() {
+    document.querySelectorAll('.chip').forEach(c => {
+      const lbl = c.dataset.label;
+      if (lbl === 'Todos') {
+        c.classList.toggle('active', activeTopics.size === 0);
+      } else {
+        c.classList.toggle('active', activeTopics.has(lbl));
+      }
+    });
+  }
+
+  // ── Render Feed ───────────────────────────────────────────────────────────
+  function renderFeed() {
+    const feed = document.getElementById('feed');
+    feed.innerHTML = '';
+
+    const q = searchQuery.toLowerCase();
+    const items = allItems
+      .filter(r => {
+        const topic = r.topico || r['tópico'] || '';
+        if (activeTopics.size && !activeTopics.has(topic)) return false;
+        if (q) {
+          const haystack = [r.link, topic, r.titulo || r['título'] || '', r.descricao || r['descrição'] || ''].join(' ').toLowerCase();
+          if (!haystack.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // Sort by date descending (newest first)
+        const da = parseDate(a.data), db = parseDate(b.data);
+        return db - da;
+      });
+
+    if (!items.length) {
+      setStatus('Nenhum resultado encontrado.');
+      return;
+    }
+
+    setStatus('');
+    items.forEach(r => feed.appendChild(makeCard(r)));
+  }
+
+  function parseDate(s) {
+    if (!s) return 0;
+    // supports dd/mm/yyyy, yyyy-mm-dd, dd-mm-yyyy
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return new Date(s).getTime();
+    const br = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+    if (br) return new Date(`${br[3]}-${br[2]}-${br[1]}`).getTime();
+    return new Date(s).getTime() || 0;
+  }
+
+  function formatDate(s) {
+    const ts = parseDate(s);
+    if (!ts) return s;
+    return new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function makeCard(r) {
+    const topic = r.topico || r['tópico'] || '';
+    const title = r.titulo || r['título'] || '';
+    const desc  = r.descricao || r['descrição'] || '';
+    const col   = topicColor(topic || '?');
+
+    const card = document.createElement('article');
+    card.className = 'card';
+
+    const domain = (() => {
+      try { return new URL(r.link).hostname.replace('www.', ''); } catch { return r.link; }
+    })();
+
+    card.innerHTML = `
+      <div class="card-header">
+        ${topic ? `<span class="topic-badge" style="background:${col.bg};color:${col.text}">${esc(topic)}</span>` : '<span></span>'}
+        <span class="card-date">${esc(formatDate(r.data))}</span>
+      </div>
+      <div class="card-body">
+        ${title ? `<div class="card-title">${esc(title)}</div>` : ''}
+        ${desc  ? `<div class="card-desc">${esc(desc)}</div>`  : ''}
+        <div class="card-url">${esc(domain)}</div>
+      </div>
+      <div class="card-footer">
+        <a class="open-link" href="${esc(r.link)}" target="_blank" rel="noopener">Abrir link →</a>
+      </div>
+    `;
+
+    return card;
+  }
+
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function clearFeed() {
+    document.getElementById('feed').innerHTML = '';
+    document.getElementById('chips').innerHTML = '';
+  }
+
+  function setStatus(html) {
+    document.getElementById('status').innerHTML = html;
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  document.getElementById('load-btn').addEventListener('click', () => {
+    const url = document.getElementById('sheet-url').value.trim();
+    if (!url) return;
+    loadSheet(url);
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    document.getElementById('sheet-url').value = '';
+    allItems = [];
+    activeTopics.clear();
+    clearFeed();
+    setStatus('');
+  });
+
+  document.getElementById('search').addEventListener('input', e => {
+    searchQuery = e.target.value;
+    renderFeed();
+  });
+
+  // ── Auto-load saved URL ───────────────────────────────────────────────────
+  const saved = savedUrl();
+  if (saved) {
+    document.getElementById('sheet-url').value = saved;
+    loadSheet(saved);
+  }
+</script>
+</body>
+</html>
